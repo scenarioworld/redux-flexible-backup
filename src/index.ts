@@ -1,3 +1,5 @@
+import { undo, redo } from './undo';
+
 export {
   createBackup,
   loadBackup,
@@ -8,3 +10,9 @@ export {
 } from './backup';
 export { createBackupSlice } from './slice';
 export { CopySliceBackupInterface } from './def';
+export {
+  createUndoableReducer,
+  createUndoableAction,
+  iterateUndoHistory,
+} from './undo';
+export const UndoActions = { undo, redo };
