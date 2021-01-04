@@ -1,10 +1,13 @@
 import { Action, createAction, PayloadActionCreator, Reducer } from "@reduxjs/toolkit"
 import { createBackup, loadBackup, StateBackupInterface, StateOrSlice, StoredState } from "./backup";
+import { createHistory, restoreWithRewind, StateDelta } from "./diff";
 
 type UndoMoment<S, BackupInterface extends StateBackupInterface<S>> = StoredState<S, BackupInterface>;
-type UndoableState<S extends Record<string, unknown>, BackupInterface extends StateBackupInterface<S>> = S & { 
-    history: UndoMoment<S, BackupInterface>[],
-    future: UndoMoment<S, BackupInterface>[],
+type UndoMomentDiff<S, BackupInterface extends StateBackupInterface<S>> = StateDelta<UndoMoment<S, BackupInterface>>;
+type UndoableState<S extends Record<string, unknown>, BackupInterface extends StateBackupInterface<S>> = S & {
+    history: UndoMomentDiff<S, BackupInterface>[],
+    present: UndoMoment<S, BackupInterface>|undefined,
+    future: UndoMomentDiff<S, BackupInterface>[],
 }
 
 /**
@@ -31,16 +34,17 @@ export function createUndoableReducer<S extends StateOrSlice, A extends Action<s
         // Cache if this is the initialization call for initial state
         const isInit = !state || Object.keys(state).length === 0;
 
-        // Clip incoming of history and future lists
+        // Clip undo data out of the state (present, future, history)
         let clippedState = undefined;
         if(state) {
             clippedState = {...state} as S;
             delete clippedState.history;
             delete clippedState.future;
+            delete clippedState.present;
         }
 
         // Run base reducer and migrate over our current history and future states
-        state = {...reducer(clippedState, action), history: state?.history ?? [], future: state?.future ?? []};
+        state = {...reducer(clippedState, action), history: state?.history ?? [], future: state?.future ?? [], present: state?.present ?? undefined};
         
         // Handle undoable actions by creating save moments
         if(action.type.indexOf('/undoable/') !== -1 || isInit) {
@@ -58,50 +62,92 @@ export function createUndoableReducer<S extends StateOrSlice, A extends Action<s
     }
 }
 
-function saveMoment<S extends StateOrSlice, BackupInterface extends StateBackupInterface<S>>(state: UndoableState<S, BackupInterface>, undoInterface: BackupInterface, historyLimit: number|undefined): UndoableState<S, BackupInterface> {
-    // Create new undo moment
-    const moment = createBackup(state as S, undoInterface);
+function saveMoment<S extends StateOrSlice, BackupInterface extends StateBackupInterface<S>>
+    (state: UndoableState<S, BackupInterface>, undoInterface: BackupInterface, historyLimit: number|undefined)
+    : UndoableState<S, BackupInterface> {
 
-    // Append to history and destroy future
-    return {...state, history: [moment, ...state.history.slice(0, historyLimit)], future: []};
+    // Create new undo moment (this will be the new "present" moment)
+    const present = createBackup(state as S, undoInterface);
+
+    // Create a new history list
+    const history = [
+        // It begins with the last present moment diffed against the new present moment
+        ...(state.present === undefined ? [] : [ createHistory(present, state.present) ]),
+
+        // And ends with the rest of the history moments existing, capped to the history limit
+        ...state.history.slice(0, historyLimit)
+    ];
+
+    return {...state, present, history, future: []};
 }
 
-function restoreMoment<S extends StateOrSlice, BackupInterface extends StateBackupInterface<S>>(state: UndoableState<S, BackupInterface>, undoInterface: BackupInterface, distance = 1): UndoableState<S, BackupInterface> {
+function restoreMoment<S extends StateOrSlice, BackupInterface extends StateBackupInterface<S>>
+    (state: UndoableState<S, BackupInterface>, undoInterface: BackupInterface, distance = 1)
+    : UndoableState<S, BackupInterface> {
+
     // Trivial case: 0
     if(distance === 0) {
+        // TODO: Maybe this should restore to present?
         console.warn("Warning: Restoring moment 0. Does nothing.");
         return state;
     }
 
-    // Get history moment
-    const moment = distance > 0
-        ? state.history[distance]
+    // How did this happen?
+    if(state.present === undefined) {
+        console.error("Missing present moment. Can't do anything.");
+        return state;
+    }
+
+    // Get appropriate list
+    const list = distance > 0 ? state.history : state.future;
+
+    // Get history moment from list
+    const diff = distance > 0
+        ? state.history[distance - 1]
         : state.future[-distance - 1];
 
     // Error if no moment exists
-    if(moment === undefined) {
+    if(diff === undefined) {
         console.error(`Could not find moment ${distance}. There are only ${state.history.length} moments in history and ${state.future.length} moments in future.`);
         return state;
     }
 
-    // Process state
-    state = loadBackup<S, StateBackupInterface<S>>(state as S, undoInterface, moment) as UndoableState<S, BackupInterface>;
+    // Start from the present moment
+    let present = state.present;
+    const rewinds = [];
+
+    // Start rewinding
+    const abs = Math.abs(distance);
+    for(let i = 0; i < abs; i++)
+    {
+        // Restore using the diff
+        let rewind = undefined;
+        [present, rewind] = restoreWithRewind(present, list[i]);
+
+        // Add the rewind diff to the rewind list
+        rewinds.push(rewind);
+    }
+
+    // We should now be at the correct moment. Load the state from that moment
+    state = loadBackup<S, StateBackupInterface<S>>(state as S, undoInterface, present) as UndoableState<S, BackupInterface>;
 
     // Update history and future arrays
     if(distance > 0)
     {
-        // Splice moments out of history and insert them in reverse order into the future array
-        const history = [...state.history];
-        const moments = history.splice(0, distance).reverse();
-        const future = [...moments, ...state.future];
-        return {...state, history, future};
+        // Slice out all the history moments we consumed 
+        const history = state.history.slice(abs);
+
+        // Add the rewind diffs to the future array
+        const future = [...rewinds.reverse(), ...state.future];
+        return {...state, history, future, present};
     }
     else
     {
-        // Splice the moments out of the future and insert them in reverse order into the history array
-        const future = [...state.future];
-        const moments = future.splice(0, -distance).reverse();
-        const history = [...moments, ...state.history];
-        return {...state, history, future};
+        // Slice out all the future moments we consumed
+        const future = state.future.slice(abs);
+
+        // Add rewinds to history
+        const history = [...rewinds.reverse(), ...state.history];
+        return {...state, history, future, present};
     }
 }

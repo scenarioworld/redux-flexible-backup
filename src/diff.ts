@@ -1,13 +1,16 @@
 import { Delta, diff, patch, reverse } from "jsondiffpatch";
 import cloneDeep from "lodash/cloneDeep";
 
+/** Re-export of jsondiffpatch Delta */
+export type StateDelta<_State> = Delta;
+
 /**
  * Creates a history record
  * @param next New moment
  * @param prev Previous moment
  */
-export function createHistory<State>(next: State, prev: State): Delta {
-    return diff(next, prev) as Delta;
+export function createHistory<State>(next: State, prev: State): StateDelta<State> {
+    return diff(next, prev) as StateDelta<State>;
 }
 
 /**
@@ -15,7 +18,7 @@ export function createHistory<State>(next: State, prev: State): Delta {
  * @param current Current state
  * @param record Record to restore
  */
-export function restore<State>(current: State, record: Delta): State {
+export function restore<State>(current: State, record: StateDelta<State>): State {
     const clone = cloneDeep(current)
     return patch(clone, record);
 }
@@ -25,12 +28,12 @@ export function restore<State>(current: State, record: Delta): State {
  * @param current Current state
  * @param record Record to restore
  */
-export function restoreWithRewind<State>(current: State, record: Delta): [State, Delta] {
+export function restoreWithRewind<State>(current: State, record: StateDelta<State>): [State, StateDelta<State>] {
     const clone = cloneDeep(current)
     const next = patch(clone, record);
 
     // Create a diff to return to that previous state
-    const returnDiff = reverse(record) as Delta;
+    const returnDiff = reverse(record) as StateDelta<State>;
 
     return [next, returnDiff];
 }
@@ -44,7 +47,7 @@ class DiffIterator<State> implements Iterator<State>
 
     constructor(
         /** History list to iterate over (first entry is latest, last is oldest) */
-        private readonly history: Delta[], 
+        private readonly history: StateDelta<State>[], 
 
         /** Current state */
         private state: State) 
@@ -81,7 +84,7 @@ interface HistoryIteration<State>
  * @param current Current state
  * @param history History list
  */
-export function iterateHistory<State>(current: State, history: Delta[]): HistoryIteration<State> {
+export function iterateHistory<State>(current: State, history: StateDelta<State>[]): HistoryIteration<State> {
     return {
         [Symbol.iterator]: () => new DiffIterator(history, current)
     }

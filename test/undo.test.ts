@@ -47,19 +47,19 @@ describe("A simple undoable state", () => {
         expect(state).toMatchObject(initialState);
     });
 
-    test("Initial state includes initial history moment", () => {
+    test("Initial state includes only present moment", () => {
         const state = undoReducer(undefined, { type: "action" });
         
-        expect(state.history).toHaveLength(1);
+        expect(state.history).toHaveLength(0);
         expect(state.future).toHaveLength(0);
-        expect(state.history[0]).toEqual(createBackup(initialState, stateBackupInterface));
+        expect(state.present).toEqual(createBackup(initialState, stateBackupInterface));
     });
 
     test("Undoable reducer doesn't create history for regular actions", () => {
         const state = undoReducer(undefined, { type: "action" });
         const next = undoReducer(state, { type: "action" });
 
-        expect(next.history).toHaveLength(1);
+        expect(next.history).toHaveLength(0);
         expect(next.future).toHaveLength(0);
     });
 
@@ -67,9 +67,8 @@ describe("A simple undoable state", () => {
         const state = undoReducer(undefined, { type: "action" });
         const next = undoReducer(state, { type: "/undoable/action" });
 
-        expect(next.history).toHaveLength(2);
+        expect(next.history).toHaveLength(1);
         expect(next.future).toHaveLength(0);
-        expect(createBackup(next, stateBackupInterface)).toMatchObject(next.history[0]);
     });
 
     test("Can undo action", () => {
@@ -96,4 +95,73 @@ describe("A simple undoable state", () => {
         // Should match state
         expect(redone.slice).toEqual(next.slice);
     });
+
+    test("Can undo many actions", () => {
+        const state = undoReducer(undefined, { type: "action" });
+        let next = state;
+
+        const actions = 10;
+        for(let i = 0; i < actions; i++) {
+            next = undoReducer(next, { type: "/undoable/action" });
+        }
+
+        for(let i = 0; i < actions; i++) {
+            next = undoReducer(next, undo);
+        }
+
+        expect(next.slice).toEqual(state.slice);
+    });
+
+    test("Can redo many actions", () => {
+        const state = undoReducer(undefined, { type: "action" });
+        let next = state;
+
+        const actions = 10;
+        for(let i = 0; i < actions; i++) {
+            next = undoReducer(next, { type: "/undoable/action" });
+        }
+        const final = next;
+
+        for(let i = 0; i < actions; i++) {
+            next = undoReducer(next, undo);
+        }
+        for(let i = 0; i < actions; i++) {
+            next = undoReducer(next, redo);
+        }
+
+        expect(next.slice).toEqual(final.slice);
+    });
+
+    test("Can mix between undo and redo", () => {
+        const state = undoReducer(undefined, { type: "action" });
+        let next = state;
+
+        // Do 10 actions
+        for(let i = 0; i < 10; i++) {
+            next = undoReducer(next, { type: "/undoable/action" });
+        }
+        const final = next;
+
+        // Undo 5 actions
+        for(let i = 0; i < 5; i++) {
+            next = undoReducer(next, undo);
+        }
+
+        // Redo 2 actions
+        for(let i = 0; i < 2; i++) {
+            next = undoReducer(next, redo);
+        }
+
+        // Undo 7 actions
+        for(let i = 0; i < 7; i++) {
+            next = undoReducer(next, undo);
+        }
+        expect(next.slice).toEqual(state.slice); // we should be at the initial moment here
+
+        // Redo all the way back to the end
+        for(let i = 0; i < 10; i++) {
+            next = undoReducer(next, redo);
+        }
+        expect(next.slice).toEqual(final.slice); // we should be back at the final moment
+    })
 });
