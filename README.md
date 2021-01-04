@@ -1,103 +1,121 @@
-# TSDX User Guide
+# Redux Flexible Backup
 
-Congrats! You just saved yourself hours of work by bootstrapping this project with TSDX. Let’s get you oriented with what’s here and how to use it.
+A fully-typed configurable backup/restore system for your redux state. 
 
-> This TSDX setup is meant for developing libraries (not apps!) that can be published to NPM. If you’re looking to build a Node app, you could use `ts-node-dev`, plain `ts-node`, or simple `tsc`.
+Also includes a simple undo/redo system.
 
-> If you’re new to TypeScript, checkout [this handy cheatsheet](https://devhints.io/typescript)
-
-## Commands
-
-TSDX scaffolds your new library inside `/src`.
-
-To run TSDX, use:
-
-```bash
-npm start # or yarn start
-```
-
-This builds to `/dist` and runs the project in watch mode so any edits you save inside `src` causes a rebuild to `/dist`.
-
-To do a one-off build, use `npm run build` or `yarn build`.
-
-To run tests, use `npm test` or `yarn test`.
-
-## Configuration
-
-Code quality is set up for you with `prettier`, `husky`, and `lint-staged`. Adjust the respective fields in `package.json` accordingly.
-
-### Jest
-
-Jest tests are set up to run with `npm test` or `yarn test`.
-
-### Bundle Analysis
-
-[`size-limit`](https://github.com/ai/size-limit) is set up to calculate the real cost of your library with `npm run size` and visualize the bundle with `npm run analyze`.
-
-#### Setup Files
-
-This is the folder structure we set up for you:
-
-```txt
-/src
-  index.tsx       # EDIT THIS
-/test
-  blah.test.tsx   # EDIT THIS
-.gitignore
-package.json
-README.md         # EDIT THIS
-tsconfig.json
-```
-
-### Rollup
-
-TSDX uses [Rollup](https://rollupjs.org) as a bundler and generates multiple rollup configs for various module formats and build settings. See [Optimizations](#optimizations) for details.
-
-### TypeScript
-
-`tsconfig.json` is set up to interpret `dom` and `esnext` types, as well as `react` for `jsx`. Adjust according to your needs.
-
-## Continuous Integration
-
-### GitHub Actions
-
-Two actions are added by default:
-
-- `main` which installs deps w/ cache, lints, tests, and builds on all pushes against a Node and OS matrix
-- `size` which comments cost comparison of your library on every pull request using [`size-limit`](https://github.com/ai/size-limit)
-
-## Optimizations
-
-Please see the main `tsdx` [optimizations docs](https://github.com/palmerhq/tsdx#optimizations). In particular, know that you can take advantage of development-only optimizations:
+## Usage Example
 
 ```js
-// ./types/index.d.ts
-declare var __DEV__: boolean;
+// Given a state
+const state = { 
+  // With one slice
+  slice: {
+    // With some data we'd want to save
+    dataToSave: 'my data',
 
-// inside your code...
-if (__DEV__) {
-  console.log('foo');
+    // And some we wouldn't
+    dataWeDontNeedToSave: 55
+  }
+};
+
+// We can define a backup interface for this state
+const backupInterface = {
+  // That tells it how to store each slice
+  slice: { 
+    // That converts the slice to what we actually need to save
+    save: (slice) => slice.dataToSave,
+
+    // And tells the system how to restore from that save
+    load: (stored) => ({dataToSave: stored, dataWeDontNeedToSave: 0})
+  }
+};
+
+// And use that to create backups
+const backup = createBackup(state, backupInterface);
+
+// Which we can later restore
+const restored = loadBackup({}, backupInterface, backup);
+
+// Want an easy to use undo/redo system? Just wrap your reducer
+const undoableReducer = createUndoableReducer(myReducer, backupInterface);
+
+// Anytime you run an action with '/undoable/' in the type, a backup point is automatically saved
+const newState = undoableReducer(state, { type: 'my/undoable/action' });
+
+// Which you can undo/redo
+const undoneState = undoableReducer(newState, UndoActions.undo);
+const redoneState = undoableReducer(newState, UndoActions.redo);
+
+// You can also iterate the history to see what's happened
+for(const moment of iterateUndoHistory(newState)) {
+  // .. do something with moment ..
+}
+
+```
+
+## Backup Interfaces
+
+The backup/restore feature is configured by backup interfaces. These are responsible for simplifying your state into the minimal object required to save and restore. This is especially useful if your state contains a lot of data that can be re-created from some minimal set or doesn't need to be stored.
+
+There are two types of backup interfaces: slice and state.
+
+A slice backup interface is an object with two methods: `save` and `load`.
+
+The `save` method should take a slice object and return what must be stored. The return value really can be anything.
+
+The `load` method takes whatever type you returned in `save` and must recreate the slice.
+
+```js
+// A simple slice backup interface
+const sliceBackupInterface = {
+  save: (slice) => slice.dataToSave,
+  load: (stored) => ({dataToSave: stored, dataWeDontNeedToSave: 0})
 }
 ```
 
-You can also choose to install and use [invariant](https://github.com/palmerhq/tsdx#invariant) and [warning](https://github.com/palmerhq/tsdx#warning) functions.
+A state backup interface is just an object mapping slices to slice backup interfaces.
 
-## Module Formats
+```js
+// State backup interface
+const stateBackupInterface = {
+  // Use sliceBackupInterface to backup/restore the `mySlice` slice
+  mySlice: sliceBackupInterface
+}
+```
 
-CJS, ESModules, and UMD module formats are supported.
+The fields of your state backup interface should match the field names of your state object.
 
-The appropriate paths are configured in `package.json` and `dist/index.js` accordingly. Please report if any issues are found.
+Any slices in the state that don't match up with some slice backup interface in the state backup interface are ignored in save/load.
 
-## Named Exports
+If you want your slice to just be copied in its entirety into the backup, use the premade `CopySliceBackupInterface`.
 
-Per Palmer Group guidelines, [always use named exports.](https://github.com/palmerhq/typescript#exports) Code split inside your React app instead of your React library.
+## Redux Toolkit Plugin
 
-## Including Styles
+If you're using Typescript and want to reduce the typing hassle of using this plugin, you can use `createBackupSlice`, a wrapper for the Redux Toolkit `createSlice`. It adds an extra helper function to the resulting slice object to quickly create backup interfaces for your slice.
 
-There are many ways to ship styles, including with CSS-in-JS. TSDX has no opinion on this, configure how you like.
+```js
+// Use just like createSlice
+const mySlice = createBackupSlice({
+  name: 'mySlice',
+  initialState: {},
+  reducers: {}
+});
 
-For vanilla CSS, you can include it at the root directory and add it to the `files` section in your `package.json`, so that it can be imported separately by your users and run through their bundler's loader.
+// Type deduction is automatic. "state" will automatically be typed to the state type of your slice and stored will automatically be typed to the return value of the first function
+export const mySliceBackupInterface = slice.createBackupInterface( state => ..., stored => ...);
+```
 
-## Publishing to NPM
+# Undo/Redo
 
-We recommend using [np](https://github.com/sindresorhus/np).
+To use undo/redo, just wrap your reducer with `createUndoableReducer` (see the Usage Example above).
+
+The resulting state will have three extra fields: `history`, `present`, and `future`.
+
+`present` stores a backup of the state as it was the last time any undoable action was run.
+
+`history` contains the past states. They are stored as diffs so you won't be able to access them directly.
+
+`future` are redoable states created when you use `UndoActions.undo`. This is what will be restored, in order, when `UndoActions.redo` is called.
+
+To iterate the history, use `iterateUndoHistory`. This will automatically unpack diffs and can be used in a `for ... of ...` loop.
