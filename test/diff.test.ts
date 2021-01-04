@@ -1,7 +1,7 @@
 import { Delta } from 'jsondiffpatch';
 import {
   createHistory,
-  iterateHistory,
+  historyIterator,
   restore,
   restoreWithRewind,
 } from '../src/diff';
@@ -43,7 +43,9 @@ test('Ensure diff history is smaller than classic history', () => {
   const future: Delta[] = [];
   while (records.length > 0 && history.length > 0) {
     const old = records.pop();
-    const { restored, diff } = restoreWithRewind(state, history.pop() as Delta);
+    const result = restoreWithRewind(state, history.pop() as Delta);
+    const restored = result.restored;
+    const diff = result.diff;
     future.push(diff);
     expect(old).toStrictEqual(restored);
     state = restored;
@@ -75,7 +77,7 @@ test('Ensure history list can be iterated', () => {
   // Make sure we're aligned
   expect(records.pop()).toStrictEqual(state);
 
-  for (const restored of iterateHistory(state, history)) {
+  for (const restored of historyIterator(state, history)) {
     const old = records.pop();
     expect(old).toStrictEqual(restored);
   }

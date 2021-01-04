@@ -11,7 +11,12 @@ import {
   StateOrSlice,
   StoredState,
 } from './backup';
-import { createHistory, restoreWithRewind, StateDelta } from './diff';
+import {
+  createHistory,
+  historyIterator,
+  restoreWithRewind,
+  StateDelta,
+} from './diff';
 
 type UndoMoment<
   S,
@@ -21,12 +26,19 @@ type UndoMomentDiff<
   S,
   BackupInterface extends StateBackupInterface<S>
 > = StateDelta<UndoMoment<S, BackupInterface>>;
+
+/** Redux state with undo/redo support. @see createUndoableReducer */
 type UndoableState<
   S extends Record<string, unknown>,
   BackupInterface extends StateBackupInterface<S>
 > = S & {
+  /** History moments. One is created every time an undoable action is done. They are stored as diffs. */
   history: UndoMomentDiff<S, BackupInterface>[];
+
+  /** Present moment cached whenever a new undo or redo state is made. Can differ from current state if any non-undoable actions are called. */
   present: UndoMoment<S, BackupInterface> | undefined;
+
+  /** Future moments. These are created anytime an undo action is called. Restore with redo. This list is cleared whenever any non-undo/redo action is called */
   future: UndoMomentDiff<S, BackupInterface>[];
 };
 
@@ -48,6 +60,15 @@ export const undo = createAction('undo');
 /** Redo action */
 export const redo = createAction('redo');
 
+/**
+ * Adds undo/redo support to a reducer. The resulting state
+ * will include a "history", "future", and "present" data ( @see UndoableState ).
+ * History moments are created whenever an incoming action includes the string /undoable/ in its type. @see createUndoableAction
+ * Use the @see undo and @see redo actions to restore states in the future/history lists
+ * @param reducer Reducer to wrap
+ * @param undoInterface Backup interface to store and restore undo points
+ * @param historyLimit History limit (undefined means infinite)
+ */
 export function createUndoableReducer<
   S extends StateOrSlice,
   A extends Action<string>,
@@ -194,4 +215,15 @@ function restoreMoment<
     const history = [...rewinds.reverse(), ...state.history];
     return { ...state, history, future, present };
   }
+}
+
+/**
+ * Allows you to iterate the state history with a for loop (unpacking diffs as you go)
+ * @param state Undoable state
+ */
+export function iterateUndoHistory<
+  S extends StateOrSlice,
+  BackupInterface extends StateBackupInterface<S>
+>(state: UndoableState<S, BackupInterface>) {
+  return historyIterator(state.present, state.history);
 }

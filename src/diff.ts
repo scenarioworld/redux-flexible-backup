@@ -47,43 +47,31 @@ export function restoreWithRewind<State>(
   return { restored: next, diff: returnDiff };
 }
 
-/**
- * Iterator that moves through a delta history list
- */
-class DiffIterator<State> implements Iterator<State> {
-  private index = 0;
-
-  constructor(
-    /** History list to iterate over (first entry is latest, last is oldest) */
-    private readonly history: StateDelta<State>[],
-
-    /** Current state */
-    private state: State
-  ) {}
-
-  /** Moves to the next element in the history list */
-  next(): IteratorResult<State> {
-    // If we're at the end of the history list, we're done
-    if (this.index >= this.history.length) {
-      return {
-        done: true,
-        value: null,
-      };
-    }
-
-    // Restore the state using the current state and the next diff
-    this.state = restore(this.state, this.history[this.index++]);
-
-    // Return
-    return {
-      done: false,
-      value: this.state,
-    };
-  }
+export interface HistoryIteration<State> {
+  [Symbol.iterator](): Iterator<State>;
 }
 
-interface HistoryIteration<State> {
-  [Symbol.iterator](): DiffIterator<State>;
+/**
+ * Generator that returns restored history states
+ * @param current Current state
+ * @param history History
+ */
+export function* historyGenerator<State>(
+  current: State | undefined,
+  history: StateDelta<State>[]
+) {
+  // No state. Done.
+  if (current === undefined) {
+    return;
+  }
+
+  // Iterate history
+  let state = current;
+  for (const delta of history) {
+    // Restore from the delta and yield the result
+    state = restore(state, delta);
+    yield state;
+  }
 }
 
 /**
@@ -91,11 +79,11 @@ interface HistoryIteration<State> {
  * @param current Current state
  * @param history History list
  */
-export function iterateHistory<State>(
-  current: State,
+export function historyIterator<State>(
+  current: State | undefined,
   history: StateDelta<State>[]
 ): HistoryIteration<State> {
   return {
-    [Symbol.iterator]: () => new DiffIterator(history, current),
+    [Symbol.iterator]: () => historyGenerator<State>(current, history),
   };
 }
