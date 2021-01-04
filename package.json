@@ -1,11 +1,16 @@
 {
   "version": "0.1.0",
   "license": "MIT",
+  "homepage": "https://github.com/brwarner/redux-flesible-backup",
+  "bugs": "https://github.com/brwarner/redux-flesible-backup/issues",
+  "repository": {
+    "url": "https://github.com/brwarner/redux-flesible-backup",
+    "type": "git"
+  },
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "engines": {
     "node": ">=10"
@@ -35,6 +40,7 @@
   },
   "name": "redux-flexible-backup",
   "author": "Brook Warner Jensen",
+  "description": "Flexible Redux state backup/restore and undo/redo systems",
   "module": "dist/redux-flexible-backup.esm.js",
   "size-limit": [
     {
