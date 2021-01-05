@@ -106,6 +106,23 @@ const mySlice = createBackupSlice({
 export const mySliceBackupInterface = slice.createBackupInterface( state => ..., stored => ...);
 ```
 
+It can also automatically create properly named undoable actions (see Undo/Redo below) by adding reducers to the `undoableReducers` option.
+
+```js
+const mySliceWithSomeUndoableActions = createBackupSlice({
+  name: 'mySlice',
+  initialState: {},
+  reducers: {
+    basicAction: ....
+  },
+  undoableReducers: {
+    undoableAction: ...
+  }
+});
+```
+
+This function plays nicely with Typescript, meaning `mySliceWithSomeUndoableActions.actions` will contain both `basicAction` and `undoableAction`.
+
 # Undo/Redo
 
 To use undo/redo, just wrap your reducer with `createUndoableReducer` (see the Usage Example above).

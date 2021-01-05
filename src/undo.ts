@@ -43,6 +43,15 @@ type UndoableState<
 };
 
 /**
+ * Creates a type name for an undoable action
+ * @param feature Feature name
+ * @param type Action type name
+ */
+export function getUndoableActionType(feature: string, type: string): string {
+  return `${feature}/undoable/${type}`;
+}
+
+/**
  * Creates an action with the appropriate name format to be "undoable"
  * @param feature Feature name
  * @param type Action type name
@@ -51,7 +60,7 @@ export function createUndoableAction<PayloadType = void>(
   feature: string,
   type: string
 ): PayloadActionCreator<PayloadType> {
-  return createAction<PayloadType>(`${feature}/undoable/${type}`);
+  return createAction<PayloadType>(getUndoableActionType(feature, type));
 }
 
 /** Undo action */
