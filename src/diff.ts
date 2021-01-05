@@ -1,5 +1,5 @@
 import { Delta, diff, patch, reverse } from 'jsondiffpatch';
-import cloneDeep from 'lodash/cloneDeep';
+import cloneDeep from 'lodash-es/cloneDeep';
 
 /** Re-export of jsondiffpatch Delta */
 export type StateDelta<_State> = Delta;
