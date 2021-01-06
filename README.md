@@ -90,6 +90,8 @@ Any slices in the state that don't match up with some slice backup interface in 
 
 If you want your slice to just be copied in its entirety into the backup, use the premade `CopySliceBackupInterface`.
 
+**NEW**: State Backup Interfaces can now also contain State Backup Interfaces as children, allowing you to recursively define state.
+
 ## Redux Toolkit Plugin
 
 If you're using Typescript and want to reduce the typing hassle of using this plugin, you can use `createBackupSlice`, a wrapper for the Redux Toolkit `createSlice`. It adds an extra helper function to the resulting slice object to quickly create backup interfaces for your slice.

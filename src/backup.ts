@@ -23,27 +23,31 @@ export type SliceBackupInterface<S, Stored> = {
 
 /**
  * Interface to save and load a state.
- * Define one SliceBackupInterface for each key you want to support save/load
+ * Define one SliceBackupInterface or StateBackupInterface for each key you want to support save/load
  */
 export type StateBackupInterface<S> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [K in keyof S]?: SliceBackupInterface<S[K], any>;
+  [K in keyof S]?: SliceBackupInterface<S[K], any> | StateBackupInterface<S[K]>;
 };
 
-// Resolves either to M or, if M is undefined, an object that has a save function which returns undefined
-//  This solves a problem in the StoredState definition below where BackupInterface[K] might be a function,
-//  or it might be undefined. I needed a way to translate that into either the function's return type OR undefined
-type UndefinedSaveGuard<M> = M extends undefined
-  ? { save: () => undefined }
-  : M;
+// If BackupInterface[K] is undefined, this resolves to undefined.
+// If BackupInterface[K] is a slice backup interface, resolve to the return value of its save method
+// If BackupInterface[K] is a state backup interface, resolve to the result of calling createBackup using it
+type TypeOfStoredKey<
+  S,
+  BackupInterface extends StateBackupInterface<S>,
+  K extends keyof BackupInterface & keyof S
+> = BackupInterface[K] extends undefined
+  ? undefined
+  : BackupInterface[K] extends { save: (...args: any) => any }
+  ? ReturnType<BackupInterface[K]['save']>
+  : StoredState<S[K], BackupInterface[K]>;
 
 /**
  * Type created by calling createBackup on a store with a given config and storage interface
  */
 export type StoredState<S, BackupInterface extends StateBackupInterface<S>> = {
-  [K in keyof BackupInterface]: ReturnType<
-    UndefinedSaveGuard<BackupInterface[K]>['save']
-  >;
+  [K in keyof (BackupInterface | S)]: TypeOfStoredKey<S, BackupInterface, K>;
 };
 
 /**
@@ -71,8 +75,15 @@ export function createBackup<
       continue;
     }
 
-    // Run a save operation
-    stored[key] = loader.save(state[key]);
+    // If there is a save function, this is a slice loader
+    if ('save' in loader && typeof loader.save === 'function') {
+      // Run a save operation
+      stored[key] = loader.save(state[key]);
+    } else {
+      // Otherwise, this is a state interface embedded in a state interface. Use createBackup recursively
+      // @ts-ignore
+      stored[key] = createBackup(state[key], loader);
+    }
   }
 
   // Return the storage
@@ -104,8 +115,15 @@ export function loadBackup<
       continue;
     }
 
-    // Run a save operation
-    loaded[key] = loader.load(store[key]);
+    // If there is a save function, this is a slice loader
+    if ('load' in loader && typeof loader.load === 'function') {
+      // Run a save operation
+      loaded[key] = loader.load(store[key]);
+    } else {
+      // Otherwise, this is a state interface embedded in a state interface. Use loadBackup recursively
+      // @ts-ignore
+      loaded[key] = loadBackup(state[key] ?? {}, loader, store[key]);
+    }
   }
 
   // Combine with existing state

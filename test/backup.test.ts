@@ -43,3 +43,64 @@ describe('A Simple State', () => {
     expect(newState).toEqual(state);
   });
 });
+
+describe('A state in a state', () => {
+  interface SubState {
+    a: string;
+    b: string;
+  }
+  interface State extends Record<string, unknown> {
+    a: string;
+    b: SubState;
+  }
+
+  // Simple string backup
+  const stringBackup = {
+    save: (data: string) => [...data],
+    load: (stored: string[] | undefined) =>
+      stored ? stored.join('') : undefined,
+  };
+
+  // save interface for substate
+  const substateBackup = {
+    a: stringBackup,
+    b: stringBackup,
+  };
+
+  // save interface for state: uses a sub state saver
+  const stateBackup = {
+    a: stringBackup,
+    b: substateBackup,
+  };
+
+  test('Backup recursively calles createBackup', () => {
+    const state: State = {
+      a: 'abc',
+      b: {
+        a: 'xyz',
+        b: 'qwerty',
+      },
+    };
+
+    const backup = createBackup(state, stateBackup);
+    expect(backup.a).toEqual([...state.a]);
+    expect(backup.b).toBeDefined();
+    expect(backup.b.a).toEqual([...state.b.a]);
+    expect(backup.b.b).toEqual([...state.b.b]);
+  });
+
+  test('Load recursively calls loadBackup', () => {
+    const state: State = {
+      a: 'abc',
+      b: {
+        a: 'xyz',
+        b: 'qwerty',
+      },
+    };
+
+    const backup = createBackup(state, stateBackup);
+    const restored = loadBackup({}, stateBackup, backup);
+
+    expect(restored).toEqual(state);
+  });
+});
