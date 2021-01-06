@@ -16,3 +16,8 @@ export {
   iterateUndoHistory,
 } from './undo';
 export const UndoActions = { undo, redo };
+export { loadFromStorage, saveToStorage } from './storage';
+export {
+  loadInitialStateFromSession,
+  createSessionMiddleware,
+} from './session';

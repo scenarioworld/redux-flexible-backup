@@ -1,8 +1,20 @@
 # Redux Flexible Backup
 
-A fully-typed configurable backup/restore system for your redux state. 
+A fully-typed configurable backup/restore system for your Redux state.
 
-Also includes a simple undo/redo system.
+Useful for:
+* Saving and restoring state from localStorage (included!)
+* Continually backing up your state to sessionStorage (included!)
+* Creating a robust, memory-efficient undo/redo system (included!)
+* Sending/recieving your state from a server or external database
+
+**What do you mean 'configurable'?**
+
+Sometimes, your Redux state contains data that you'd rather not save or transmit. That might include data which could be computed/recreated from the rest of the state, application data that doesn't need to be undone/redone, and more. 
+
+When creating or loading backups using this package, you always specify a "backup interface". This contains per-slice configuration that decides what gets saved and what doesn't. You'll get to specify a save/load pair of functions for each slice in your state: meaning you could even compress the data if you'd like.
+
+All this is fully-typed, meaning that if you're using Typescript, the results of any backups will be automatically computed from the save function's return values.
 
 ## Usage Example
 
@@ -106,6 +118,14 @@ const mySlice = createBackupSlice({
 
 // Type deduction is automatic. "state" will automatically be typed to the state type of your slice and stored will automatically be typed to the return value of the first function
 export const mySliceBackupInterface = slice.createBackupInterface( state => ..., stored => ...);
+
+// The type of mySliceBackupInterface is automatically deduced, so if we use it to create a state backup
+const stateBackupInterface = { mySlice: mySliceBackupInterface };
+
+// And call createBackup
+const backup = createBackup(currentReduxState, stateBackupInterface);
+
+// all of backup's fields will be automatically typed properly given the return value of the save function above in createBackupInterface
 ```
 
 It can also automatically create properly named undoable actions (see Undo/Redo below) by adding reducers to the `undoableReducers` option.
@@ -138,3 +158,33 @@ The resulting state will have three extra fields: `history`, `present`, and `fut
 `future` are redoable states created when you use `UndoActions.undo`. This is what will be restored, in order, when `UndoActions.redo` is called.
 
 To iterate the history, use `iterateUndoHistory`. This will automatically unpack diffs and can be used in a `for ... of ...` loop.
+
+# Storage
+
+This package also includes a plugin for saving backups to local or session storage.
+
+```js
+
+// Save to storage using an interface
+saveToStorage(localStorage, "STORAGE_KEY", myReduxState, myStateBackupInterface);
+
+// Load from storage
+const loadedState = loadFromStorage<MyStateType>({}, localStorage, "STORAGE_KEY", myStateBackupInterface);
+
+```
+
+If you want to save a backup of your state to session storage after each action, you can use the included session storage middleware.
+
+```js
+
+// Create an initial state by loading from the session
+const initialState = loadInitialStateFromSession({}, myStateBackupInterface, "SESSION_KEY");
+
+// Create middleware
+const middleware = createSessionMiddleware<MyStateType>(myStateBackupInterface, "SESSION_KEY");
+
+// Install it when creating your state
+const extensions = compose(applyMiddleware(middleware));
+const store = createStore(rootReducer, initialState, extensions);
+
+```
