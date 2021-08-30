@@ -14,6 +14,7 @@ import {
 import {
   createHistory,
   historyIterator,
+  restore,
   restoreWithRewind,
   StateDelta,
 } from './diff';
@@ -64,10 +65,13 @@ export function createUndoableAction<PayloadType = void>(
 }
 
 /** Undo action */
-export const undo = createAction('undo');
+export const undo = createAction('UndoRedo.undo');
 
 /** Redo action */
-export const redo = createAction('redo');
+export const redo = createAction('UndoRedo.redo');
+
+/** Updates the present moment with the current state */
+export const apply = createAction('UndoRedo.apply');
 
 /**
  * Adds undo/redo support to a reducer. The resulting state
@@ -119,9 +123,36 @@ export function createUndoableReducer<
       state = restoreMoment(state, undoInterface, 1);
     } else if (action.type === redo.type) {
       state = restoreMoment(state, undoInterface, -1);
+    } else if (action.type === apply.type) {
+      state = updatePresentMoment(state, undoInterface);
     }
 
     return state;
+  };
+}
+
+function updatePresentMoment<
+  S extends StateOrSlice,
+  BackupInterface extends StateBackupInterface<S>
+>(state: UndoableState<S, BackupInterface>, undoInterface: BackupInterface) {
+  // Create new present moment (this will be the new "present" moment)
+  const present = createBackup(state, undoInterface);
+
+  // If the moment is undefined OR we have no history, just return now
+  if (present === undefined || state.history.length === 0) {
+    return { ...state, present, history: [], future: [] };
+  }
+
+  // We need to update the most recent history diff to operate against the new present
+  const lastHistory = restore(state.present, state.history[0]);
+  const newHistoryDiff = createHistory(present, lastHistory);
+
+  // Create new state with new present, updated history list, and empty future
+  return {
+    ...state,
+    present,
+    history: [newHistoryDiff].concat(state.history.slice(1)),
+    future: [],
   };
 }
 
