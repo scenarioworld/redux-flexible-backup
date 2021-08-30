@@ -1,4 +1,4 @@
-import { undo, redo } from './undo';
+import { undo, redo, apply } from './undo';
 
 export {
   createBackup,
@@ -15,7 +15,7 @@ export {
   createUndoableAction,
   iterateUndoHistory,
 } from './undo';
-export const UndoActions = { undo, redo };
+export const UndoActions = { undo, redo, apply };
 export { loadFromStorage, saveToStorage } from './storage';
 export {
   loadInitialStateFromSession,
