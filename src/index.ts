@@ -8,7 +8,11 @@ export {
   SliceBackupInterface,
   StateBackupInterface,
 } from './backup';
-export { createBackupSlice } from './slice';
+export {
+  createBackupSlice,
+  CreateBackupSliceOptions,
+  SliceAddon,
+} from './slice';
 export { CopySliceBackupInterface } from './def';
 export {
   createUndoableReducer,

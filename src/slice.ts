@@ -11,7 +11,7 @@ import {
   SliceBackupInterface,
 } from './backup';
 
-interface SliceAddon<Slice> {
+export interface SliceAddon<Slice> {
   /**
    * Creates a new backup interface for this slice. @see createBackup
    * @param save Save method to conver this slice into a storage object
