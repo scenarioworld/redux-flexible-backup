@@ -45,11 +45,11 @@
   "size-limit": [
     {
       "path": "dist/redux-flexible-backup.cjs.production.min.js",
-      "limit": "10 KB"
+      "limit": "25 KB"
     },
     {
       "path": "dist/redux-flexible-backup.esm.js",
-      "limit": "10 KB"
+      "limit": "25 KB"
     }
   ],
   "devDependencies": {
@@ -61,7 +61,7 @@
     "size-limit": "^4.9.0",
     "ts-jest": "^26.4.4",
     "tsdx": "^0.14.1",
-    "tslib": "^2.0.3",
+    "tslib": "^2.3.1",
     "typescript": "^4.1.2"
   },
   "dependencies": {

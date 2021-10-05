@@ -22,7 +22,10 @@ test('Can create backup interface from a slice definition', () => {
   // Test it
   const saved = backupInterface.save(initialState);
   expect(saved).toBe('4dd');
-  const loaded = backupInterface.load(saved);
+  const loaded = backupInterface.load(saved, {
+    needs: () => 0,
+    update: () => {},
+  });
   expect(loaded?.num).toBe(4);
 });
 
