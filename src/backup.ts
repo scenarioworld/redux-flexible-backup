@@ -6,19 +6,20 @@ export type BackupSaveFunction<S, Stored> = (state: S) => Stored | undefined;
 /**
  * Converts a saved object back into its corresponding game state, or undefined (if load failed)
  */
-export type BackupLoadFunction<S, Stored> = (
-  state: Stored | undefined
+export type BackupLoadFunction<S, Stored, Parent = unknown> = (
+  state: Stored | undefined,
+  dependencyLoader: DependencyLoader<Parent>
 ) => S | undefined;
 
 /**
  * An interface to save and load a slice from a blackup
  */
-export type SliceBackupInterface<S, Stored> = {
+export type SliceBackupInterface<S, Stored, Parent = unknown> = {
   /** Saves the slice to a stored backup */
   save: BackupSaveFunction<S, Stored>;
 
   /** Loads the slice from a stored backup */
-  load: BackupLoadFunction<S, Stored>;
+  load: BackupLoadFunction<S, Stored, Parent>;
 };
 
 /**
@@ -90,6 +91,70 @@ export function createBackup<
   return stored as StoredState<S, BackupInterface>;
 }
 
+type UpdateType<T> = Partial<T>;
+
+export interface DependencyLoader<S> {
+  needs: <K extends keyof S & string>(key: K) => S[K];
+  update: <K extends keyof S & string>(
+    key: K,
+    update: UpdateType<S[K]>
+  ) => void;
+}
+
+function LoadKey<
+  S extends StateOrSlice,
+  BackupInterface extends StateBackupInterface<S>
+>(
+  state: Partial<S>,
+  backupInterface: BackupInterface,
+  store: StoredState<S, BackupInterface>,
+  key: keyof S & string,
+  loaded: StateOrSlice,
+  dependencyLoader: DependencyLoader<S>,
+  loadedKeys: Set<string>,
+  loadQueue: Set<string>
+): void {
+  // Mark as loaded
+  if (loadedKeys.has(key)) {
+    throw new Error(`Somehow we loaded the same key ${key} twice...`);
+  }
+  loadedKeys.add(key);
+
+  // Get the loader
+  const loader = backupInterface[key];
+  if (!loader) {
+    return;
+  }
+
+  // Make sure we haven't already loaded this
+  if (loaded[key] !== undefined) {
+    return;
+  }
+
+  // Make sure we're not in a circular dependency
+  if (loadQueue.has(key)) {
+    const circle = Array.from(loadQueue.values());
+    circle.push(key);
+    throw new Error(`Circular dependency in loadBackup: ${circle}.`);
+  }
+
+  // Push to load queue
+  loadQueue.add(key);
+
+  // If there is a save function, this is a slice loader
+  if ('load' in loader && typeof loader.load === 'function') {
+    // Run a save operation
+    loaded[key] = loader.load(store[key], dependencyLoader);
+  } else {
+    // Otherwise, this is a state interface embedded in a state interface. Use loadBackup recursively
+    // @ts-ignore
+    loaded[key] = loadBackup(state[key] ?? {}, loader, store[key]);
+  }
+
+  // Remove from load queue
+  loadQueue.delete(key);
+}
+
 /**
  * Loads a backup into the state
  * @param state Current state
@@ -107,23 +172,79 @@ export function loadBackup<
   // We'll be loading all the state into here
   const loaded: StateOrSlice = {};
 
+  // Create load queue
+  const loadQueue: Set<string> = new Set();
+  const loadedKeys: Set<string> = new Set();
+
+  // Create dependency loader
+  const dependencyLoader: DependencyLoader<S> = {
+    needs(innerKey) {
+      // If we haven't loaded that slice, load it
+      if (!loadedKeys.has(innerKey)) {
+        LoadKey(
+          state,
+          backupInterface,
+          store,
+          innerKey,
+          loaded,
+          dependencyLoader,
+          loadedKeys,
+          loadQueue
+        );
+      }
+
+      // Then return
+      return loaded[innerKey] as S[typeof innerKey];
+    },
+
+    update(innerKey, update) {
+      // Make sure that slice is loaded
+      if (!loadedKeys.has(innerKey)) {
+        LoadKey(
+          state,
+          backupInterface,
+          store,
+          innerKey,
+          loaded,
+          dependencyLoader,
+          loadedKeys,
+          loadQueue
+        );
+      }
+
+      // If it's a non-object type
+      if (
+        typeof update === 'number' ||
+        typeof update === 'string' ||
+        Array.isArray(update)
+      ) {
+        // Just do a set
+        loaded[innerKey] = update;
+      } else {
+        // Otherwise, do a partial update
+        const prev = loaded[innerKey] as {};
+        loaded[innerKey] = { ...prev, ...update };
+      }
+    },
+  };
+
   // Iterate keys in the storage interface
   for (const key in backupInterface) {
-    // Get the loader
-    const loader = backupInterface[key];
-    if (!loader) {
+    // Ignore if we already loaded this key
+    if (loadedKeys.has(key)) {
       continue;
     }
 
-    // If there is a save function, this is a slice loader
-    if ('load' in loader && typeof loader.load === 'function') {
-      // Run a save operation
-      loaded[key] = loader.load(store[key]);
-    } else {
-      // Otherwise, this is a state interface embedded in a state interface. Use loadBackup recursively
-      // @ts-ignore
-      loaded[key] = loadBackup(state[key] ?? {}, loader, store[key]);
-    }
+    LoadKey(
+      state,
+      backupInterface,
+      store,
+      key,
+      loaded,
+      dependencyLoader,
+      loadedKeys,
+      loadQueue
+    );
   }
 
   // Combine with existing state
